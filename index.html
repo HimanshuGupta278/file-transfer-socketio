@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>File Transfer Using Socket.IO</title>
+  <style>
+    #progress-container {
+      margin-top: 20px;
+    }
+
+    .progress-bar {
+      margin: 10px 0;
+    }
+
+    .progress-bar progress {
+      width: 100%;
+      appearance: none;
+    }
+  </style>
+</head>
+
+<body>
+  <form id="form" action="">
+    <input id="input" type="file" multiple accept="image/*, video/*" />
+    <button type="submit">Send</button>
+  </form>
+
+  <div id="progress-container"></div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const CHUNK_SIZE = 1024 * 50; // 50KB
+    const progressContainer = document.getElementById('progress-container');
+
+    async function formHandler(e) {
+      e.preventDefault();
+
+      const files = input.files;
+
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+        let chunkNo = 0;
+
+        // Create progress bar for this file
+        const progressBar = createProgressBar(file.name);
+
+        // Send metadata to the server
+        const metadata = {
+          name: file.name,
+          size: file.size,
+          maxChunkSize: CHUNK_SIZE,
+        };
+        socket.emit('uploadStart', metadata);
+
+        // Read and upload file chunks sequentially
+        for (let offset = 0; offset < file.size; offset += CHUNK_SIZE) {
+          chunkNo++;
+          const chunk = file.slice(offset, offset + CHUNK_SIZE);
+          const chunkData = await readFileChunk(chunk);
+
+          socket.emit('uploadingChunk', { data: chunkData, chunkNo });
+
+          // Update progress bar
+          updateProgressBar(progressBar, chunkNo, totalChunks);
+        }
+      }
+    }
+
+    // Utility function to read a file chunk as ArrayBuffer
+    function readFileChunk(chunk) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = () => reject(reader.error);
+        reader.readAsArrayBuffer(chunk);
+      });
+    }
+
+    // Create a progress bar for a file
+    function createProgressBar(fileName) {
+      const progressWrapper = document.createElement('div');
+      progressWrapper.className = 'progress-bar';
+
+      const label = document.createElement('label');
+      label.textContent = fileName;
+
+      const progressBar = document.createElement('progress');
+      progressBar.max = 100; // Represents 100%
+      progressBar.value = 0; // Start at 0%
+
+      progressWrapper.appendChild(label);
+      progressWrapper.appendChild(progressBar);
+      progressContainer.appendChild(progressWrapper);
+
+      return progressBar;
+    }
+
+    // Update the progress bar
+    function updateProgressBar(progressBar, chunkNo, totalChunks) {
+      const percentComplete = ((chunkNo / totalChunks) * 100).toFixed(2);
+      progressBar.value = percentComplete;
+    }
+
+    form.addEventListener('submit', formHandler);
+  </script>
+</body>
+
+</html>
